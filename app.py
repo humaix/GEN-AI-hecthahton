@@ -1,5 +1,5 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration, WebRtcMode
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 import av
 import cv2
 import torch
@@ -11,13 +11,6 @@ import time
 from collections import deque, Counter
 from pathlib import Path
 import queue
-from gtts import gTTS
-import io
-
-# WebRTC Configuration for Streamlit Cloud
-RTC_CONFIGURATION = RTCConfiguration(
-    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
-)
 
 # --- CUSTOM IMPORTS ---
 from model_utils import HybridSignRecognitionModel, HandsOnlyFeatureExtractor, normalize_frame_hands_only
@@ -58,18 +51,6 @@ if "device" not in st.session_state:
 if "model_loaded" not in st.session_state:
     st.session_state["model_loaded"] = False
 
-# --- UTILS ---
-def speak_text(text, lang='ur'):
-    """Converts text to speech and returns audio bytes."""
-    try:
-        tts = gTTS(text=text, lang=lang)
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        return fp.getvalue()
-    except Exception as e:
-        st.error(f"TTS Error: {e}")
-        return None
-
 # --- VIDEO PROCESSOR (Modified to accept queue reference) ---
 class PyTorchProcessor(VideoProcessorBase):
     def __init__(self, model, labels, device, sensitivity, out_queue):
@@ -101,8 +82,11 @@ class PyTorchProcessor(VideoProcessorBase):
         # Active Check (Height Threshold)
         is_active = False
         if hands_present and results.multi_hand_landmarks:
-            if any(hand_lm.landmark[0].y < self.sensitivity for hand_lm in results.multi_hand_landmarks):
-                is_active = True
+            try:
+                if any(hand_lm.landmark[0].y < self.sensitivity for hand_lm in results.multi_hand_landmarks):
+                    is_active = True
+            except (AttributeError, IndexError):
+                pass
         
         norm_feat = normalize_frame_hands_only(features)
         
@@ -141,21 +125,27 @@ class PyTorchProcessor(VideoProcessorBase):
                     
                     # Heuristic Correction (Aap vs Theek Hu)
                     if final_label in ["Theek Hu", "Thumbs Up"] and results.multi_hand_landmarks:
-                        for hand_lm in results.multi_hand_landmarks:
-                            if hand_lm.landmark[8].z < (hand_lm.landmark[5].z - 0.05):
-                                final_label = "Aap"
+                        try:
+                            for hand_lm in results.multi_hand_landmarks:
+                                if hand_lm.landmark[8].z < (hand_lm.landmark[5].z - 0.05):
+                                    final_label = "Aap"
+                        except (AttributeError, IndexError):
+                            pass
+                    
+                    now = time.time()
+                    if self.last_label != final_label and (now - self.last_time) > 1.0:
+                        self.last_label = final_label
+                        self.last_time = now
+                        self.cooldown = 10
                         
-                        now = time.time()
-                        if self.last_label != final_label and (now - self.last_time) > 1.0:
-                            self.last_label = final_label
-                            self.last_time = now
-                            self.cooldown = 10
-                            
-                            # Add to queue
+                        # Add to queue
+                        try:
                             self.out_queue.put_nowait(final_label)
-                            print(f"[OK] DETECTED: {final_label} (Queue size: {self.out_queue.qsize()})")
-                        
-                        smooth_label = f"{final_label} ({avg_conf:.2f})"
+                            print(f"✅ DETECTED: {final_label} (Queue size: {self.out_queue.qsize()})")
+                        except Exception as e:
+                            print(f"❌ Queue error: {e}")
+                    
+                    smooth_label = f"{final_label} ({avg_conf:.2f})"
         
         if self.cooldown > 0: 
             self.cooldown -= 1
@@ -215,11 +205,7 @@ with st.sidebar:
                     st.rerun()
                     
                 except Exception as e:
-                    import traceback
-                    error_details = traceback.format_exc()
                     st.error(f"❌ Error: {str(e)}")
-                    st.code(error_details, language="text")
-                    print(f"[!] MODEL LOAD ERROR: {error_details}")
                     st.session_state["model_loaded"] = False
             else:
                 st.error("❌ Model files not found!")
@@ -249,8 +235,8 @@ while not q.empty():
                 if (not st.session_state.detected_words) or (word_clean != st.session_state.detected_words[-1]):
                     st.session_state.detected_words.append(word_clean)
                     st.session_state.processed_words.add(word_id)
-                    print(f"[+] Added word: {word_clean}")
-                    print(f"[*] Current list: {st.session_state.detected_words}")
+                    print(f"📥 Added word: {word_clean}")
+                    print(f"📝 Current list: {st.session_state.detected_words}")
     except queue.Empty:
         break
 
@@ -272,8 +258,6 @@ with col1:
         
         webrtc_streamer(
             key="sign-detection",
-            mode=WebRtcMode.SENDRECV,
-            rtc_configuration=RTC_CONFIGURATION,
             video_processor_factory=processor_factory,
             media_stream_constraints={"video": True, "audio": False},
             async_processing=True
@@ -282,8 +266,6 @@ with col1:
         queue_ref = st.session_state.get("word_queue", queue.Queue())
         webrtc_streamer(
             key="sign-detection-loading",
-            mode=WebRtcMode.SENDRECV,
-            rtc_configuration=RTC_CONFIGURATION,
             video_processor_factory=lambda: PyTorchProcessor(None, [], torch.device("cpu"), sensitivity, queue_ref),
             media_stream_constraints={"video": True, "audio": False},
             async_processing=True
@@ -314,17 +296,10 @@ with col2:
                 with st.spinner("🤖 Generating..."):
                     sent = st.session_state.sentence_maker.make_sentence(st.session_state.detected_words)
                 st.success(sent)
-                
-                # Audio Playback Option
-                audio_bytes = speak_text(sent)
-                if audio_bytes:
-                    st.audio(audio_bytes, format="audio/mp3")
-                
                 st.session_state.history.append({
                     'words': st.session_state.detected_words.copy(),
                     'sentence': sent,
-                    'timestamp': time.strftime("%H:%M:%S"),
-                    'audio': audio_bytes
+                    'timestamp': time.strftime("%H:%M:%S")
                 })
                 st.session_state.detected_words = []
                 st.session_state.processed_words = set()
@@ -345,8 +320,6 @@ with col2:
                 with st.expander(f"🕐 {entry.get('timestamp', 'N/A')}"):
                     st.write("**Words:**", " → ".join(entry.get('words', [])))
                     st.write("**Sentence:**", entry.get('sentence', ''))
-                    if entry.get('audio'):
-                        st.audio(entry['audio'], format="audio/mp3")
             else:
                 st.write(f"- {entry}")
         
