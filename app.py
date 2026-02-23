@@ -11,6 +11,8 @@ import time
 from collections import deque, Counter
 from pathlib import Path
 import queue
+from gtts import gTTS
+import io
 
 # --- CUSTOM IMPORTS ---
 from model_utils import HybridSignRecognitionModel, HandsOnlyFeatureExtractor, normalize_frame_hands_only
@@ -50,6 +52,18 @@ if "device" not in st.session_state:
     st.session_state["device"] = torch.device("cpu")
 if "model_loaded" not in st.session_state:
     st.session_state["model_loaded"] = False
+
+# --- UTILS ---
+def speak_text(text, lang='ur'):
+    """Converts Urdu text to speech and returns audio bytes."""
+    try:
+        tts = gTTS(text=text, lang=lang)
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        return fp.getvalue()
+    except Exception as e:
+        st.error(f"TTS Error: {e}")
+        return None
 
 # --- VIDEO PROCESSOR (Modified to accept queue reference) ---
 class PyTorchProcessor(VideoProcessorBase):
@@ -296,10 +310,17 @@ with col2:
                 with st.spinner("🤖 Generating..."):
                     sent = st.session_state.sentence_maker.make_sentence(st.session_state.detected_words)
                 st.success(sent)
+                
+                # Audio Playback
+                audio_bytes = speak_text(sent)
+                if audio_bytes:
+                    st.audio(audio_bytes, format="audio/mp3")
+                
                 st.session_state.history.append({
                     'words': st.session_state.detected_words.copy(),
                     'sentence': sent,
-                    'timestamp': time.strftime("%H:%M:%S")
+                    'timestamp': time.strftime("%H:%M:%S"),
+                    'audio': audio_bytes
                 })
                 st.session_state.detected_words = []
                 st.session_state.processed_words = set()
@@ -320,6 +341,8 @@ with col2:
                 with st.expander(f"🕐 {entry.get('timestamp', 'N/A')}"):
                     st.write("**Words:**", " → ".join(entry.get('words', [])))
                     st.write("**Sentence:**", entry.get('sentence', ''))
+                    if entry.get('audio'):
+                        st.audio(entry['audio'], format="audio/mp3")
             else:
                 st.write(f"- {entry}")
         
