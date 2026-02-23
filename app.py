@@ -13,25 +13,31 @@ from pathlib import Path
 import queue
 from gtts import gTTS
 import io
+
 # WebRTC Configuration for Streamlit Cloud
 RTC_CONFIGURATION = RTCConfiguration(
     {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
 )
+
 # --- CUSTOM IMPORTS ---
 from model_utils import HybridSignRecognitionModel, HandsOnlyFeatureExtractor, normalize_frame_hands_only
 from urdu_sentence_generator import UrduSentenceGenerator
+
 # --- CONSTANTS ---
 BASE_DIR = Path(__file__).parent
 MODEL_PATH = str(BASE_DIR / "models_snapshot_handsonly" / "best_model.pth")
 LABELS_PATH = str(BASE_DIR / "models_snapshot_handsonly" / "labels.json")
 TARGET_SEQUENCE_LENGTH = 10
 CONFIDENCE_THRESHOLD = 0.75
+
 # Page Setup
 st.set_page_config(page_title="IsharaAI", layout="wide")
+
 # --- SESSION STATE INITIALIZATION (CRITICAL: Queue must be created ONCE) ---
 # Create queue in session state so it persists across reruns
 if "word_queue" not in st.session_state:
     st.session_state.word_queue = queue.Queue()
+
 # Data storage
 if "detected_words" not in st.session_state: 
     st.session_state.detected_words = []
@@ -41,6 +47,7 @@ if "sentence_maker" not in st.session_state:
     st.session_state.sentence_maker = UrduSentenceGenerator()
 if "processed_words" not in st.session_state:
     st.session_state.processed_words = set()
+
 # Model-related
 if "model" not in st.session_state: 
     st.session_state["model"] = None
@@ -50,6 +57,7 @@ if "device" not in st.session_state:
     st.session_state["device"] = torch.device("cpu")
 if "model_loaded" not in st.session_state:
     st.session_state["model_loaded"] = False
+
 # --- UTILS ---
 def speak_text(text, lang='ur'):
     """Converts text to speech and returns audio bytes."""
@@ -61,6 +69,7 @@ def speak_text(text, lang='ur'):
     except Exception as e:
         st.error(f"TTS Error: {e}")
         return None
+
 # --- VIDEO PROCESSOR (Modified to accept queue reference) ---
 class PyTorchProcessor(VideoProcessorBase):
     def __init__(self, model, labels, device, sensitivity, out_queue):
@@ -75,6 +84,7 @@ class PyTorchProcessor(VideoProcessorBase):
         self.cooldown = 0
         self.last_label = None
         self.last_time = time.time()
+
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         img = frame.to_ndarray(format="bgr24")
         
@@ -85,16 +95,14 @@ class PyTorchProcessor(VideoProcessorBase):
             cv2.putText(img, "MODEL NOT LOADED - Click 'Load Model' in sidebar", 
                        (20, h-20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
             return av.VideoFrame.from_ndarray(img, format="bgr24")
+
         features, results, hands_present = self.extractor.extract(img)
         
         # Active Check (Height Threshold)
         is_active = False
         if hands_present and results.multi_hand_landmarks:
-            try:
-                if any(hand_lm.landmark[0].y < self.sensitivity for hand_lm in results.multi_hand_landmarks):
-                    is_active = True
-            except (AttributeError, IndexError):
-                pass
+            if any(hand_lm.landmark[0].y < self.sensitivity for hand_lm in results.multi_hand_landmarks):
+                is_active = True
         
         norm_feat = normalize_frame_hands_only(features)
         
@@ -133,12 +141,9 @@ class PyTorchProcessor(VideoProcessorBase):
                     
                     # Heuristic Correction (Aap vs Theek Hu)
                     if final_label in ["Theek Hu", "Thumbs Up"] and results.multi_hand_landmarks:
-                        try:
-                            for hand_lm in results.multi_hand_landmarks:
-                                if hand_lm.landmark[8].z < (hand_lm.landmark[5].z - 0.05):
-                                    final_label = "Aap"
-                        except (AttributeError, IndexError):
-                            pass
+                        for hand_lm in results.multi_hand_landmarks:
+                            if hand_lm.landmark[8].z < (hand_lm.landmark[5].z - 0.05):
+                                final_label = "Aap"
                         
                         now = time.time()
                         if self.last_label != final_label and (now - self.last_time) > 1.0:
@@ -147,11 +152,8 @@ class PyTorchProcessor(VideoProcessorBase):
                             self.cooldown = 10
                             
                             # Add to queue
-                            try:
-                                self.out_queue.put_nowait(final_label)
-                                print(f"[OK] DETECTED: {final_label} (Queue size: {self.out_queue.qsize()})")
-                            except Exception as e:
-                                print(f"[!] Queue error: {e}")
+                            self.out_queue.put_nowait(final_label)
+                            print(f"[OK] DETECTED: {final_label} (Queue size: {self.out_queue.qsize()})")
                         
                         smooth_label = f"{final_label} ({avg_conf:.2f})"
         
@@ -160,35 +162,16 @@ class PyTorchProcessor(VideoProcessorBase):
         
         # Draw UI on Frame
         h, w, _ = img.shape
-        
-        # 1. Draw Sensitivity Line (Threshold)
-        line_y = int(self.sensitivity * h)
-        cv2.line(img, (0, line_y), (w, line_y), (255, 255, 0), 2)
-        cv2.putText(img, "ACTIVE ZONE ↑", (10, line_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
-        # 2. Draw Hand Landmarks and Debug Info
-        if results.multi_hand_landmarks:
-            for hand_lm in results.multi_hand_landmarks:
-                wrist_y = hand_lm.landmark[0].y
-                wrist_px = (int(hand_lm.landmark[0].x * w), int(hand_lm.landmark[0].y * h))
-                
-                # Wrist Y Debug Text
-                color_wrist = (0, 255, 0) if wrist_y < self.sensitivity else (0, 0, 255)
-                cv2.putText(img, f"Y: {wrist_y:.2f}", (wrist_px[0], wrist_px[1]-10), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_wrist, 1)
-                
-                # Landmark Dots
-                for lm in hand_lm.landmark:
-                    cx, cy = int(lm.x * w), int(lm.y * h)
-                    cv2.circle(img, (cx, cy), 3, (0, 255, 0), -1)
-        # 3. Bottom Status Bar
         cv2.rectangle(img, (0, h-60), (w, h), (0, 0, 0), -1)
-        color_status = (0, 255, 0) if is_active else (0, 0, 255)
-        text_status = f"SIGN: {smooth_label}" if is_active else "RESTING (Hands below line)"
-        cv2.putText(img, text_status, (20, h-20), cv2.FONT_HERSHEY_SIMPLEX, 1, color_status, 2)
+        color = (0, 255, 0) if is_active else (0, 0, 255)
+        text = f"SIGN: {smooth_label}" if is_active else "RESTING"
+        cv2.putText(img, text, (20, h-20), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
         
         return av.VideoFrame.from_ndarray(img, format="bgr24")
+
 # --- UI LAYOUT ---
 st.title("✋ IsharaAI - Urdu Sign Language")
+
 with st.sidebar:
     st.header("⚙️ Settings")
     sensitivity = st.slider("Hand Height Sensitivity", 0.5, 1.0, 0.9)
@@ -251,6 +234,7 @@ with st.sidebar:
                     st.caption(f"{i+1}. {label}")
     else:
         st.warning("⚠️ Model not loaded")
+
 # CRITICAL: Drain queue BEFORE rendering UI (just like working version)
 q = st.session_state.word_queue
 while not q.empty():
@@ -269,8 +253,10 @@ while not q.empty():
                     print(f"[*] Current list: {st.session_state.detected_words}")
     except queue.Empty:
         break
+
 # Main Area
 col1, col2 = st.columns([2, 1])
+
 with col1:
     st.subheader("📹 Live Detection")
     
@@ -303,6 +289,7 @@ with col1:
             async_processing=True
         )
         st.info("👈 Load the model from sidebar")
+
 with col2:
     st.subheader("📝 Detected Words")
     
@@ -348,6 +335,7 @@ with col2:
             st.session_state.detected_words = []
             st.session_state.processed_words = set()
             st.rerun()
+
     st.divider()
     st.subheader("📜 History")
     
@@ -366,5 +354,6 @@ with col2:
             st.caption(f"Showing 5 of {len(st.session_state.history)} total")
     else:
         st.caption("No history yet")
+
 st.divider()
 st.caption("IsharaAI - Real-time Urdu Sign Language Recognition | © 2024")
