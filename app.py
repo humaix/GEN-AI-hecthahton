@@ -150,21 +150,21 @@ class PyTorchProcessor(VideoProcessorBase):
                                     final_label = "Aap"
                         except (AttributeError, IndexError):
                             pass
-                    
-                    now = time.time()
-                    if self.last_label != final_label and (now - self.last_time) > 1.0:
-                        self.last_label = final_label
-                        self.last_time = now
-                        self.cooldown = 10
                         
-                        # Add to queue
-                        try:
-                            self.out_queue.put_nowait(final_label)
-                            print(f"[OK] DETECTED: {final_label} (Queue size: {self.out_queue.qsize()})")
-                        except Exception as e:
-                            print(f"[!] Queue error: {e}")
-                    
-                    smooth_label = f"{final_label} ({avg_conf:.2f})"
+                        now = time.time()
+                        if self.last_label != final_label and (now - self.last_time) > 1.0:
+                            self.last_label = final_label
+                            self.last_time = now
+                            self.cooldown = 10
+                            
+                            # Add to queue
+                            try:
+                                self.out_queue.put_nowait(final_label)
+                                print(f"[OK] DETECTED: {final_label} (Queue size: {self.out_queue.qsize()})")
+                            except Exception as e:
+                                print(f"[!] Queue error: {e}")
+                        
+                        smooth_label = f"{final_label} ({avg_conf:.2f})"
         
         if self.cooldown > 0: 
             self.cooldown -= 1
@@ -285,7 +285,7 @@ with col1:
             rtc_configuration=RTC_CONFIGURATION,
             video_processor_factory=processor_factory,
             media_stream_constraints={"video": True, "audio": False},
-            async_processing=True
+            async_processing=False
         )
     else:
         queue_ref = st.session_state.get("word_queue", queue.Queue())
@@ -295,7 +295,7 @@ with col1:
             rtc_configuration=RTC_CONFIGURATION,
             video_processor_factory=lambda: PyTorchProcessor(None, [], torch.device("cpu"), sensitivity, queue_ref),
             media_stream_constraints={"video": True, "audio": False},
-            async_processing=True
+            async_processing=False
         )
         st.info("👈 Load the model from sidebar")
 
