@@ -1,0 +1,17 @@
+{
+  "labels": [
+    "Aap",
+    "Kese",
+    "Salam",
+    "Theek hu",
+    "Theek nahi hu"
+  ],
+  "num_classes": 5,
+  "sign_types": {
+    "Aap": "snapshot",
+    "Kese": "snapshot",
+    "Salam": "snapshot",
+    "Theek hu": "snapshot",
+    "Theek nahi hu": "snapshot"
+  }
+}
