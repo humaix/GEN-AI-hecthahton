@@ -6,4 +6,7 @@ mediapipe
 av
 scikit-learn
 google-generativeai
+torch
+torchvision
+
 
