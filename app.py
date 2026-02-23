@@ -14,6 +14,13 @@ import queue
 from gtts import gTTS
 import io
 
+
+
+# WebRTC Configuration for Streamlit Cloud
+RTC_CONFIGURATION = RTCConfiguration(
+    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+)
+
 # --- CUSTOM IMPORTS ---
 from model_utils import HybridSignRecognitionModel, HandsOnlyFeatureExtractor, normalize_frame_hands_only
 from urdu_sentence_generator import UrduSentenceGenerator
@@ -352,4 +359,5 @@ with col2:
         st.caption("No history yet")
 
 st.divider()
+
 st.caption("IsharaAI - Real-time Urdu Sign Language Recognition | © 2024")
