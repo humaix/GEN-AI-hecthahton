@@ -285,7 +285,7 @@ with col1:
             rtc_configuration=RTC_CONFIGURATION,
             video_processor_factory=processor_factory,
             media_stream_constraints={"video": True, "audio": False},
-            async_processing=False
+            async_processing=True
         )
     else:
         queue_ref = st.session_state.get("word_queue", queue.Queue())
@@ -295,7 +295,7 @@ with col1:
             rtc_configuration=RTC_CONFIGURATION,
             video_processor_factory=lambda: PyTorchProcessor(None, [], torch.device("cpu"), sensitivity, queue_ref),
             media_stream_constraints={"video": True, "audio": False},
-            async_processing=False
+            async_processing=True
         )
         st.info("👈 Load the model from sidebar")
 
