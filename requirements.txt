@@ -3,13 +3,9 @@ streamlit-webrtc==0.64.5
 opencv-python-headless==4.11.0.86
 numpy==1.26.4
 mediapipe==0.10.14
-av==12.1.0
+av==14.0.0
 scikit-learn==1.6.0
 google-generativeai==0.8.4
 torch==2.5.1
 torchvision==0.20.1
 gTTS==2.5.1
-
-
-
-
