@@ -1,5 +1,5 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration, WebRtcMode
 import av
 import cv2
 import torch
@@ -14,9 +14,10 @@ import queue
 from gtts import gTTS
 import io
 
-
-
-
+# WebRTC Configuration for Streamlit Cloud
+RTC_CONFIGURATION = RTCConfiguration(
+    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+)
 
 # --- CUSTOM IMPORTS ---
 from model_utils import HybridSignRecognitionModel, HandsOnlyFeatureExtractor, normalize_frame_hands_only
@@ -223,7 +224,11 @@ with st.sidebar:
                     st.rerun()
                     
                 except Exception as e:
+                    import traceback
+                    error_details = traceback.format_exc()
                     st.error(f"❌ Error: {str(e)}")
+                    st.code(error_details, language="text")
+                    print(f"[!] MODEL LOAD ERROR: {error_details}")
                     st.session_state["model_loaded"] = False
             else:
                 st.error("❌ Model files not found!")
@@ -276,6 +281,8 @@ with col1:
         
         webrtc_streamer(
             key="sign-detection",
+            mode=WebRtcMode.SENDRECV,
+            rtc_configuration=RTC_CONFIGURATION,
             video_processor_factory=processor_factory,
             media_stream_constraints={"video": True, "audio": False},
             async_processing=True
@@ -284,6 +291,8 @@ with col1:
         queue_ref = st.session_state.get("word_queue", queue.Queue())
         webrtc_streamer(
             key="sign-detection-loading",
+            mode=WebRtcMode.SENDRECV,
+            rtc_configuration=RTC_CONFIGURATION,
             video_processor_factory=lambda: PyTorchProcessor(None, [], torch.device("cpu"), sensitivity, queue_ref),
             media_stream_constraints={"video": True, "audio": False},
             async_processing=True
@@ -356,6 +365,4 @@ with col2:
         st.caption("No history yet")
 
 st.divider()
-
 st.caption("IsharaAI - Real-time Urdu Sign Language Recognition | © 2024")
-
