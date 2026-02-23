@@ -171,10 +171,33 @@ class PyTorchProcessor(VideoProcessorBase):
         
         # Draw UI on Frame
         h, w, _ = img.shape
+        
+        # 1. Draw Sensitivity Line (Threshold)
+        line_y = int(self.sensitivity * h)
+        cv2.line(img, (0, line_y), (w, line_y), (255, 255, 0), 2)
+        cv2.putText(img, "ACTIVE ZONE ↑", (10, line_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+
+        # 2. Draw Hand Landmarks and Debug Info
+        if results.multi_hand_landmarks:
+            for hand_lm in results.multi_hand_landmarks:
+                wrist_y = hand_lm.landmark[0].y
+                wrist_px = (int(hand_lm.landmark[0].x * w), int(hand_lm.landmark[0].y * h))
+                
+                # Wrist Y Debug Text
+                color_wrist = (0, 255, 0) if wrist_y < self.sensitivity else (0, 0, 255)
+                cv2.putText(img, f"Y: {wrist_y:.2f}", (wrist_px[0], wrist_px[1]-10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_wrist, 1)
+                
+                # Landmark Dots
+                for lm in hand_lm.landmark:
+                    cx, cy = int(lm.x * w), int(lm.y * h)
+                    cv2.circle(img, (cx, cy), 3, (0, 255, 0), -1)
+
+        # 3. Bottom Status Bar
         cv2.rectangle(img, (0, h-60), (w, h), (0, 0, 0), -1)
-        color = (0, 255, 0) if is_active else (0, 0, 255)
-        text = f"SIGN: {smooth_label}" if is_active else "RESTING"
-        cv2.putText(img, text, (20, h-20), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+        color_status = (0, 255, 0) if is_active else (0, 0, 255)
+        text_status = f"SIGN: {smooth_label}" if is_active else "RESTING (Hands below line)"
+        cv2.putText(img, text_status, (20, h-20), cv2.FONT_HERSHEY_SIMPLEX, 1, color_status, 2)
         
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
