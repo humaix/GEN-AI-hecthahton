@@ -25,6 +25,17 @@ LABELS_PATH = str(BASE_DIR / "models_snapshot_handsonly" / "labels.json")
 TARGET_SEQUENCE_LENGTH = 10
 CONFIDENCE_THRESHOLD = 0.75
 
+# --- URDU SCRIPT MAPPING ---
+LABEL_MAP = {
+    "Aap": "آپ",
+    "Kese": "کیسے",
+    "Salam": "سلام",
+    "Theek hu": "ٹھیک ہوں",
+    "Theek nahi hu": "ٹھیک نہیں ہوں",
+    "Thumbs Up": "انگوٹھا اوپر",
+    "Theek Hu": "ٹھیک ہوں"
+}
+
 # Page Setup
 st.set_page_config(page_title="IsharaAI", layout="wide")
 
@@ -254,6 +265,9 @@ while not q.empty():
     except queue.Empty:
         break
 
+def get_urdu_script(word):
+    return LABEL_MAP.get(word, word)
+
 # Main Area
 col1, col2 = st.columns([2, 1])
 
@@ -297,7 +311,11 @@ with col2:
     # Display Words
     if st.session_state.detected_words:
         st.success("✅ Detected:")
-        st.write(" → ".join(st.session_state.detected_words))
+        # Display both Roman and Urdu script
+        roman_text = " → ".join(st.session_state.detected_words)
+        urdu_text = " ← ".join([get_urdu_script(w) for w in st.session_state.detected_words])
+        st.write(f"**Roman:** {roman_text}")
+        st.write(f"**Urdu:** {urdu_text}")
         st.caption(f"Total: {len(st.session_state.detected_words)} words")
     else:
         st.caption("Waiting for signs...")
@@ -339,8 +357,17 @@ with col2:
         for entry in reversed(st.session_state.history[-5:]):
             if isinstance(entry, dict):
                 with st.expander(f"🕐 {entry.get('timestamp', 'N/A')}"):
-                    st.write("**Words:**", " → ".join(entry.get('words', [])))
-                    st.write("**Sentence:**", entry.get('sentence', ''))
+                    # Words Display
+                    words = entry.get('words', [])
+                    roman_words = " → ".join(words)
+                    urdu_words = " ← ".join([get_urdu_script(w) for w in words])
+                    
+                    st.write(f"**Words (Roman):** {roman_words}")
+                    st.write(f"**Words (Urdu):** {urdu_words}")
+                    
+                    # Sentence Display
+                    st.write(f"**Sentence:** {entry.get('sentence', '')}")
+                    
                     if entry.get('audio'):
                         st.audio(entry['audio'], format="audio/mp3")
             else:
