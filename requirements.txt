@@ -1,8 +1,9 @@
 streamlit
 streamlit-webrtc
-opencv-python
+opencv-python-headless
 numpy
 mediapipe
 av
 scikit-learn
 google-generativeai
+
