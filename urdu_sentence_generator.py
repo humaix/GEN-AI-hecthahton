@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 
 # --- CONFIGURATION ---
-MY_API_KEY = "AIzaSyCbCbbAFSiKtV2S1PP3sBDg2q856RH44Vs"
+MY_API_KEY = "API key"
 # ---------------------
 
 try:
@@ -114,3 +114,4 @@ Now, generate the single best Urdu sentence based on the valid words only:
         
     def get_cache_stats(self):
         return {"total_cached": len(self.cache)}
+
